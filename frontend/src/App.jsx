@@ -92,7 +92,7 @@ function App() {
     setLoading(true); setWorkoutData(null); setDietData(null); setMenuOpen(false);
 
     try {
-      const workoutRes = await fetch('http://127.0.0.1:8000/generate-workout', {
+      const workoutRes = await fetch('https://neural-fit-your-ai-health-companion.onrender.com/generate-workout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ level: parseInt(level) || 1, goal: goal || 'Hypertrophy' })
       });
@@ -105,7 +105,7 @@ function App() {
       const workoutResult = await workoutRes.json();
       const startFocus = workoutResult['Day_1']?.Focus || 'Rest';
 
-      const dietRes = await fetch('http://127.0.0.1:8000/generate-diet', {
+      const dietRes = await fetch('https://neural-fit-your-ai-health-companion.onrender.com/generate-diet', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           weight_kg: safeWeight, height_cm: safeHeight, age: safeAge, 
@@ -141,7 +141,7 @@ function App() {
     setIsChatTyping(true);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/ask-coach', {
+      const response = await fetch('https://neural-fit-your-ai-health-companion.onrender.com/ask-coach', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage.text })
       });
