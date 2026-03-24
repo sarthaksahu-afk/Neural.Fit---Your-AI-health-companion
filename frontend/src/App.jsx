@@ -92,6 +92,7 @@ function App() {
     setLoading(true); setWorkoutData(null); setDietData(null); setMenuOpen(false);
 
     try {
+      // 1. Generate Workout
       const workoutRes = await fetch('https://neural-fit-your-ai-health-companion.onrender.com/generate-workout', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ level: parseInt(level) || 1, goal: goal || 'Hypertrophy' })
@@ -103,30 +104,33 @@ function App() {
       }
       
       const workoutResult = await workoutRes.json();
-      const startFocus = workoutResult['Day_1']?.Focus || 'Rest';
-
-      const dietRes = await fetch('https://neural-fit-your-ai-health-companion.onrender.com/generate-diet', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          weight_kg: safeWeight, height_cm: safeHeight, age: safeAge, 
-          is_male: Boolean(isMale), workout_focus: startFocus, goal: goal || 'Hypertrophy'
-        })
+      
+      // 2. Generate 7-Day Dynamic Diet (Linked to Daily Workout Focus)
+      const dietPromises = daysOfWeek.map((_, i) => {
+        const dayFocus = workoutResult[`Day_${i + 1}`]?.Focus || 'Rest';
+        return fetch('https://neural-fit-your-ai-health-companion.onrender.com/generate-diet', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            weight_kg: safeWeight, height_cm: safeHeight, age: safeAge, 
+            is_male: Boolean(isMale), workout_focus: dayFocus, goal: goal || 'Hypertrophy'
+          })
+        }).then(async res => {
+          if (!res.ok) throw new Error("Backend Diet Engine Failed");
+          return res.json();
+        });
       });
+
+      const dietResults = await Promise.all(dietPromises);
       
-      if (!dietRes.ok) {
-          const errText = await dietRes.text();
-          throw new Error(`Backend Diet Engine Failed (${dietRes.status}): ${errText}`);
-      }
-      
-      const dietResult = await dietRes.json();
-      
-      setWorkoutData(workoutResult); setDietData(dietResult); setStep(4);
+      setWorkoutData(workoutResult); 
+      setDietData(dietResults); // Now an array of 7 distinct diet plans
+      setStep(4);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setActiveDashboardSection('base');
 
     } catch (error) {
       console.error("Full Error Output:", error);
-      alert(`SYSTEM ALERT:\n\n${error.message}\n\nIf this says "Failed to fetch", your Python Uvicorn server is completely turned off or crashed! Check your VS Code terminal!`);
+      alert(`SYSTEM ALERT:\n\n${error.message}\n\nIf this says "Failed to fetch", your Python Uvicorn server is completely turned off or crashed!`);
     }
     setLoading(false);
   };
@@ -455,7 +459,7 @@ function App() {
         </section>
 
         <section ref={dietRef} id="diet-section" className="scroll-mt-32 min-h-screen pb-40 relative">
-          {dietData && (
+          {dietData && dietData[selectedDay] && (
             <div className="transition-transform transform duration-500 ease-in-out">
                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 pb-6 border-b-2 border-zinc-800 gap-4">
                     <div className="flex items-center gap-4">
@@ -466,10 +470,10 @@ function App() {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12 relative z-10">
                 {[ 
-                  {title: 'Kcal', val: dietData.targets.Calories, color: 'text-white'}, 
-                  {title: 'Pro', val: dietData.targets.Protein, color: 'text-cyan-400'}, 
-                  {title: 'Carb', val: dietData.targets.Carbs, color: 'text-amber-400'}, 
-                  {title: 'Fat', val: dietData.targets.Fat, color: 'text-rose-400'} 
+                  {title: 'Kcal', val: dietData[selectedDay].targets.Calories, color: 'text-white'}, 
+                  {title: 'Pro', val: dietData[selectedDay].targets.Protein, color: 'text-cyan-400'}, 
+                  {title: 'Carb', val: dietData[selectedDay].targets.Carbs, color: 'text-amber-400'}, 
+                  {title: 'Fat', val: dietData[selectedDay].targets.Fat, color: 'text-rose-400'} 
                 ].map(macro => (
                   <div key={macro.title} className="bg-zinc-950/80 border-4 border-zinc-800 rounded-2xl p-8 text-center transition-all transform hover:scale-105 active:scale-95 hover:border-emerald-700 backdrop-blur-sm">
                     <p className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-1">Target {macro.title}</p>
@@ -482,7 +486,7 @@ function App() {
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> DAILY FUEL MAP (V2 w/ QUANTITIES + MACROS)
               </h4>
               <div className="space-y-6 relative z-10">
-                {dietData.menu.map((food, i) => (
+                {dietData[selectedDay].menu.map((food, i) => (
                   <div key={i} className="bg-zinc-950/80 p-6 rounded-2xl border-2 border-zinc-800 flex flex-col md:flex-row md:justify-between md:items-center transition-all hover:bg-zinc-800 group hover:border-emerald-600 backdrop-blur-sm gap-4 md:gap-6">
                     <div>
                       <p className="font-bold text-2xl text-zinc-100 group-hover:text-emerald-400 tracking-tighter leading-tight">{food.Food}</p>
@@ -505,7 +509,8 @@ function App() {
         </section>
       </main>
 
-      <aside className={`fixed bottom-6 right-6 z-50 transition-all duration-300 hidden md:flex flex-col items-end ${isChatOpen ? 'w-96' : 'max-w-sm transform hover:scale-105'}`}>
+      {/* MOBILE RESPONSIVE AI COACH */}
+      <aside className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 transition-all duration-300 flex flex-col items-end ${isChatOpen ? 'w-[90vw] sm:w-96' : 'max-w-[80vw] sm:max-w-sm transform hover:scale-105'}`}>
         
         {isChatOpen && (
           <div className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-[0_0_40px_rgba(0,0,0,0.7)] rounded-2xl w-full mb-4 overflow-hidden flex flex-col animate-fade-in-up h-[400px]">
@@ -564,12 +569,12 @@ function App() {
         )}
 
         {!isChatOpen && (
-          <div onClick={() => setIsChatOpen(true)} className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-[0_0_30px_rgba(0,0,0,0.5)] p-5 rounded-3xl flex items-center gap-4 cursor-pointer hover:border-emerald-500/50 transition-colors group">
-            <div className="w-16 h-16 bg-emerald-950 rounded-full border-4 border-emerald-500 flex items-center justify-center relative shadow-[0_0_15px_rgba(16,185,129,0.3)] overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
+          <div onClick={() => setIsChatOpen(true)} className="bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 shadow-[0_0_30px_rgba(0,0,0,0.5)] p-3 sm:p-5 rounded-full sm:rounded-3xl flex items-center gap-0 sm:gap-4 cursor-pointer hover:border-emerald-500/50 transition-colors group">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-950 rounded-full border-2 sm:border-4 border-emerald-500 flex items-center justify-center relative shadow-[0_0_15px_rgba(16,185,129,0.3)] overflow-hidden shrink-0 group-hover:scale-105 transition-transform">
                 <img src="https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=200&q=80" alt="Coach" className="w-full h-full object-cover scale-150 object-center"/>
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full animate-ping z-10"></span>
+                <span className="absolute -top-1 -right-1 w-3 h-3 sm:w-4 sm:h-4 bg-emerald-500 rounded-full animate-ping z-10"></span>
             </div>
-            <div>
+            <div className="hidden sm:block">
               <p className="text-xs font-bold text-emerald-500 mb-1 uppercase tracking-wider flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> ASK AI COACH</p>
               <p className="text-sm text-zinc-200 font-medium animate-coach-breathe leading-relaxed" key={quoteIdx}>"{quotes[quoteIdx]}"</p>
             </div>
